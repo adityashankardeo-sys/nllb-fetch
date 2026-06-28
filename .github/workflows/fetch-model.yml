@@ -1,0 +1,38 @@
+name: Fetch NLLB model
+
+# Run this manually from the Actions tab (the "Run workflow" button).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Hugging Face tools
+        run: pip install "huggingface_hub[hf_transfer]"
+
+      - name: Download the model (on GitHub's servers, not your laptop)
+        env:
+          HF_HUB_ENABLE_HF_TRANSFER: "1"
+        run: python -c "from huggingface_hub import snapshot_download; snapshot_download('facebook/nllb-200-distilled-600M', local_dir='model')"
+
+      - name: Pack and split into under-2GB parts
+        run: |
+          tar -cf model.tar model
+          split -b 1900m -d model.tar model.tar.part
+          sha256sum model.tar > model.tar.sha256
+          ls -lh model.tar.part*
+
+      - name: Publish the files as a Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create model-v1 \
+            model.tar.part* model.tar.sha256 \
+            --title "NLLB model files" \
+            --notes "Download every model.tar.part* file, then reassemble on your laptop."
